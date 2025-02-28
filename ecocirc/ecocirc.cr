@@ -1,0 +1,142 @@
+require "socket"
+
+class ModbusTCPClient
+  @socket : TCPSocket
+
+  def initialize(@host : String, @port = 502)
+    @socket = TCPSocket.new(@host, @port).tap do |tcp|
+      tcp.sync = false
+      tcp.read_buffering = true
+    end
+    @lock = Mutex.new
+  end
+
+  def close
+    @socket.close
+  end
+
+  def write_holding_registers(address, values : Indexable(Int16 | UInt16), unit_id = 1)
+    raise ArgumentError.new("Too many values") if values.size >= 128
+    @lock.synchronize do
+      transaction_id = rand(UInt16) # Random transaction ID
+      protocol_id = 0_u16           # Modbus Protocol ID
+      length = 6_u16                # Number of bytes after this field
+      function_code = 16_u8         # Function code for reading holding registers
+      count = values.size
+      bytesize = count * 2
+      @socket.write_bytes transaction_id.to_u16, IO::ByteFormat::NetworkEndian
+      @socket.write_bytes protocol_id.to_u16, IO::ByteFormat::NetworkEndian
+      @socket.write_bytes length.to_u16, IO::ByteFormat::NetworkEndian
+      @socket.write_byte unit_id.to_u8
+      @socket.write_byte function_code.to_u8
+      @socket.write_bytes address.to_u16, IO::ByteFormat::NetworkEndian
+      @socket.write_bytes count.to_u16, IO::ByteFormat::NetworkEndian
+      @socket.write_bytes bytes.to_u8, IO::ByteFormat::NetworkEndian
+      values.each do |v|
+        @socket.write_bytes v, IO::ByteFormat::NetworkEndian
+      end
+      @socket.flush
+    end
+  end
+
+  def read_holding_registers(address, count, unit_id = 1)
+    @lock.synchronize do
+      transaction_id = rand(UInt16) # Random transaction ID
+      protocol_id = 0_u16           # Modbus Protocol ID
+      length = 6_u16                # Number of bytes after this field
+      function_code = 3_u8          # Function code for reading holding registers
+
+      # Construct Modbus TCP request
+      @socket.write_bytes transaction_id.to_u16, IO::ByteFormat::NetworkEndian
+      @socket.write_bytes protocol_id.to_u16, IO::ByteFormat::NetworkEndian
+      @socket.write_bytes length.to_u16, IO::ByteFormat::NetworkEndian
+      @socket.write_byte unit_id.to_u8
+      @socket.write_byte function_code.to_u8
+      @socket.write_bytes address.to_u16, IO::ByteFormat::NetworkEndian
+      @socket.write_bytes count.to_u16, IO::ByteFormat::NetworkEndian
+      @socket.flush
+
+      if transaction_id != (tid = @socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
+        raise Error.new "Unexpected transaction id #{tid} != #{transaction_id}"
+      end
+      if protocol_id != (pi = @socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
+        raise Error.new "Unexpected protocol #{pi} != #{protocol_id}"
+      end
+      response_length = @socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian
+      if unit_id != (uid = @socket.read_byte || raise IO::EOFError.new)
+        raise Error.new "Unexpected unit #{uid} != #{unit_id}"
+      end
+      response_function = @socket.read_byte || raise IO::EOFError.new
+      if (response_function >> 7) == 1 # highest bit set indicates an exception
+        case exception_code = @socket.read_byte
+        when 1 then raise Error.new "Invalid function"
+        when 2 then raise Error.new "Invalid address"
+        when 3 then raise Error.new "Invalid data"
+        else        raise Error.new "Exception code #{exception_code}"
+        end
+      end
+
+      if response_function != function_code
+        raise Error.new "Unexpected function #{response_function} != #{function_code}"
+      end
+      bytesize = @socket.read_byte || raise IO::EOFError.new
+      Array(UInt16).new(bytesize // sizeof(UInt16)) do
+        @socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian
+      end
+    end
+  end
+
+  class Error < Exception; end
+end
+
+class Ecocirc
+  def initialize(address = "192.168.40.20")
+    @modbus = ModbusTCPClient.new(address)
+  end
+
+  def measurements
+    values = @modbus.read_holding_registers(0x0200, 0x10)
+    {
+      power:       values[0],         # watt
+      head:        values[1] / 100.0, # meters
+      flow:        values[2] / 10.0,  # liters/second
+      speed:       values[3],         # rpm
+      temperature: values[4] / 10.0,  # celsius
+      # external_temperature:  values[5] / 10.0,
+      # winding_1_temperature: values[6],
+      # winding_2_temperature: values[7],
+      # winding_3_temperature: values[8],
+      module_temperature: values[9],
+      quadrant_current:   values[10] / 100.0, # ampere
+      status_io:          values[11],         # bit field
+      alarms1:            values[12],         # bit field
+      alarms2:            values[13],         # bit field
+      errors:             values[14],         # bit field
+      error_code:         values[15],
+    }
+  end
+end
+
+require "http/server"
+
+ecocirc = Ecocirc.new
+
+server = HTTP::Server.new([
+  HTTP::ErrorHandler.new,
+  HTTP::CompressHandler.new,
+]) do |context|
+  case context.request.path
+  when "/metrics"
+    context.response.content_type = "text/plain"
+    ecocirc.measurements.each do |key, value|
+      context.response.puts "# TYPE ecocirc_#{key} gauge"
+      context.response.puts "ecocirc_#{key} #{value}"
+    end
+  else
+    context.response.respond_with_status(HTTP::Status::NOT_FOUND)
+  end
+end
+
+address = server.bind_tcp "::", 8080
+puts "Listening on http://#{address}"
+server.listen
