@@ -62,8 +62,7 @@ backup_shelly_scripts() {
     local safe_name=$(echo "${script_name}" | tr ' ' '_')
 
     # Get the script code directly from the "code" field
-    local script_code=$(curl -s "http://${SHELLY_IP}/rpc/Script.GetCode?id=${script_id}" \
-      | jq -r '.code')
+    local script_code=$(curl -s "http://${SHELLY_IP}/rpc/Script.GetCode?id=${script_id}" | jq -r '.data')
 
     local filename="${DEVICE_DIR}/${script_id}_${safe_name}.js"
     echo "${script_code}" > "${filename}"
