@@ -28,7 +28,7 @@ function httpServerHandler(request, response) {
     ["shelly_temperature{name=\"Retur\"}", Shelly.getComponentStatus("temperature:100").tC].join(" "),
     ["shelly_temperature{name=\"Primär\"}", Shelly.getComponentStatus("temperature:101").tC].join(" "),
     ["shelly_temperature{name=\"Framledning\"}", Shelly.getComponentStatus("temperature:102").tC].join(" "),
-    ["shelly_temperature{name=\"Utomhus\"}", Shelly.getComponentStatus("bthomesensor:202").value].join(" "),
+    ["shelly_temperature{name=\"Utomhus\"}", Shelly.getComponentStatus("bthomesensor:202").value || NaN].join(" "),
     ["shelly_cover{name=\"Ställdon\"}", cover].join(" ")
   ].join("\n")
   response.headers = [["Content-Type", "text/plain"]]
