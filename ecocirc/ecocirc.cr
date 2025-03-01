@@ -173,7 +173,13 @@ server = HTTP::Server.new([
   case context.request.path
   when "/metrics"
     context.response.content_type = "text/plain"
-    ecocirc.measurements.each do |key, value|
+    measurements = begin
+      ecocirc.measurements
+    rescue ex : IO::Error
+      context.response.respond_with_status(HTTP::Status::SERVICE_UNAVAILABLE, ex.message)
+      next
+    end
+    measurements.each do |key, value|
       context.response.puts "# TYPE ecocirc_#{key} gauge"
       context.response.puts "ecocirc_#{key} #{value}"
     end
