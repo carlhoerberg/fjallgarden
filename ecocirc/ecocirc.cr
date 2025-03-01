@@ -155,6 +155,15 @@ end
 
 require "http/server"
 
+spawn do
+  udp = UDPSocket.new
+  udp.bind "0.0.0.0", 1234
+  loop do
+    message, _client_addr = udp.receive
+    puts message
+  end
+end
+
 ecocirc = Ecocirc.new
 
 server = HTTP::Server.new([
