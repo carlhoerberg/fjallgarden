@@ -14,8 +14,8 @@
 // Adjust the constants, placeholder code, and the regulation interval for your setup.
 
 // --- Constants and Configuration ---
-const HEATING_SLOPE  = 0.9;      // Slope of the heating curve
-const OFFSET         = 37.0;     // Base offset (°C)
+const HEATING_SLOPE  = 1.1;      // Slope of the heating curve
+const OFFSET         = 38.0;     // Base offset (°C)
 const OUT_REF        = 5.0;      // Outdoor reference temperature (°C)
 const MIN_SUPPLY     = 20.0;     // Minimum allowed supply temperature (°C)
 const MAX_SUPPLY     = 60.0;     // Maximum allowed supply temperature (°C)
@@ -23,8 +23,7 @@ const MAX_SUPPLY     = 60.0;     // Maximum allowed supply temperature (°C)
 const REGULATION_INTERVAL = 30000; // Interval in ms (e.g., 30 seconds) to run the regulation loop
 
 function getOutdoorTemperature() {
-  //return Shelly.getComponentStatus("temperature:101").tC;
-  return -5
+  return Shelly.getComponentStatus("temperature:101").tC;
 }
 
 function updateSupplyTemperature(T_supply) {
