@@ -133,6 +133,24 @@ class Ecocirc
       error_code:         values[15],
     }
   end
+
+  def operating=(value : Bool)
+    @modbus.write_holding_registers(0x0000, [value ? 1 : 0])
+  end
+
+  enum ControlMode
+    ConstantPressure    = 1
+    ProportionalPressue = 2
+    ConstantCurve       = 3
+  end
+
+  def control_mode=(mode : ControlMode)
+    @modbus.write_holding_registers(0x0001, [mode.value])
+  end
+
+  def night_mode=(value : Bool)
+    @modbus.write_holding_registers(0x0002, [value ? 1 : 0])
+  end
 end
 
 require "http/server"
