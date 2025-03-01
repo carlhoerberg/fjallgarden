@@ -4,11 +4,9 @@ class ModbusTCPClient
   @socket : TCPSocket
 
   def initialize(@host : String, @port = 502)
-    @socket = TCPSocket.new(@host, @port).tap do |tcp|
-      tcp.sync = false
-      tcp.read_buffering = true
-    end
     @lock = Mutex.new
+    @socket = TCPSocket.new(@host, @port, connect_timeout: 1)
+    set_socket_options(@socket)
   end
 
   def close
@@ -17,58 +15,58 @@ class ModbusTCPClient
 
   def write_holding_registers(address, values : Indexable(Int16 | UInt16), unit_id = 1)
     raise ArgumentError.new("Too many values") if values.size >= 128
-    @lock.synchronize do
+    with_socket do |socket|
       transaction_id = rand(UInt16) # Random transaction ID
       protocol_id = 0_u16           # Modbus Protocol ID
       length = 6_u16                # Number of bytes after this field
       function_code = 16_u8         # Function code for reading holding registers
       count = values.size
       bytesize = count * 2
-      @socket.write_bytes transaction_id.to_u16, IO::ByteFormat::NetworkEndian
-      @socket.write_bytes protocol_id.to_u16, IO::ByteFormat::NetworkEndian
-      @socket.write_bytes length.to_u16, IO::ByteFormat::NetworkEndian
-      @socket.write_byte unit_id.to_u8
-      @socket.write_byte function_code.to_u8
-      @socket.write_bytes address.to_u16, IO::ByteFormat::NetworkEndian
-      @socket.write_bytes count.to_u16, IO::ByteFormat::NetworkEndian
-      @socket.write_bytes bytes.to_u8, IO::ByteFormat::NetworkEndian
+      socket.write_bytes transaction_id.to_u16, IO::ByteFormat::NetworkEndian
+      socket.write_bytes protocol_id.to_u16, IO::ByteFormat::NetworkEndian
+      socket.write_bytes length.to_u16, IO::ByteFormat::NetworkEndian
+      socket.write_byte unit_id.to_u8
+      socket.write_byte function_code.to_u8
+      socket.write_bytes address.to_u16, IO::ByteFormat::NetworkEndian
+      socket.write_bytes count.to_u16, IO::ByteFormat::NetworkEndian
+      socket.write_bytes bytes.to_u8, IO::ByteFormat::NetworkEndian
       values.each do |v|
-        @socket.write_bytes v, IO::ByteFormat::NetworkEndian
+        socket.write_bytes v, IO::ByteFormat::NetworkEndian
       end
-      @socket.flush
+      socket.flush
     end
   end
 
   def read_holding_registers(address, count, unit_id = 1)
-    @lock.synchronize do
+    with_socket do |socket|
       transaction_id = rand(UInt16) # Random transaction ID
       protocol_id = 0_u16           # Modbus Protocol ID
       length = 6_u16                # Number of bytes after this field
       function_code = 3_u8          # Function code for reading holding registers
 
       # Construct Modbus TCP request
-      @socket.write_bytes transaction_id.to_u16, IO::ByteFormat::NetworkEndian
-      @socket.write_bytes protocol_id.to_u16, IO::ByteFormat::NetworkEndian
-      @socket.write_bytes length.to_u16, IO::ByteFormat::NetworkEndian
-      @socket.write_byte unit_id.to_u8
-      @socket.write_byte function_code.to_u8
-      @socket.write_bytes address.to_u16, IO::ByteFormat::NetworkEndian
-      @socket.write_bytes count.to_u16, IO::ByteFormat::NetworkEndian
-      @socket.flush
+      socket.write_bytes transaction_id.to_u16, IO::ByteFormat::NetworkEndian
+      socket.write_bytes protocol_id.to_u16, IO::ByteFormat::NetworkEndian
+      socket.write_bytes length.to_u16, IO::ByteFormat::NetworkEndian
+      socket.write_byte unit_id.to_u8
+      socket.write_byte function_code.to_u8
+      socket.write_bytes address.to_u16, IO::ByteFormat::NetworkEndian
+      socket.write_bytes count.to_u16, IO::ByteFormat::NetworkEndian
+      socket.flush
 
-      if transaction_id != (tid = @socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
+      if transaction_id != (tid = socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
         raise Error.new "Unexpected transaction id #{tid} != #{transaction_id}"
       end
-      if protocol_id != (pi = @socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
+      if protocol_id != (pi = socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
         raise Error.new "Unexpected protocol #{pi} != #{protocol_id}"
       end
-      response_length = @socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian
-      if unit_id != (uid = @socket.read_byte || raise IO::EOFError.new)
+      response_length = socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian
+      if unit_id != (uid = socket.read_byte || raise IO::EOFError.new)
         raise Error.new "Unexpected unit #{uid} != #{unit_id}"
       end
-      response_function = @socket.read_byte || raise IO::EOFError.new
+      response_function = socket.read_byte || raise IO::EOFError.new
       if (response_function >> 7) == 1 # highest bit set indicates an exception
-        case exception_code = @socket.read_byte
+        case exception_code = socket.read_byte
         when 1 then raise Error.new "Invalid function"
         when 2 then raise Error.new "Invalid address"
         when 3 then raise Error.new "Invalid data"
@@ -79,11 +77,31 @@ class ModbusTCPClient
       if response_function != function_code
         raise Error.new "Unexpected function #{response_function} != #{function_code}"
       end
-      bytesize = @socket.read_byte || raise IO::EOFError.new
+      bytesize = socket.read_byte || raise IO::EOFError.new
       Array(UInt16).new(bytesize // sizeof(UInt16)) do
-        @socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian
+        socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian
       end
     end
+  end
+
+  private def with_socket(& : TCPSocket -> _)
+    try = 0
+    @lock.synchronize do
+      loop do
+        return yield @socket
+      rescue ex : IO::Error
+        STDERR.puts ex.message
+        @socket.close
+        @socket = TCPSocket.new(@host, @port, connect_timeout: 1)
+        set_socket_options(@socket)
+        raise ex if (try += 1) > 1
+      end
+    end
+  end
+
+  private def set_socket_options(socket)
+    socket.read_timeout = 1.seconds
+    socket.write_timeout = 1.seconds
   end
 
   class Error < Exception; end
