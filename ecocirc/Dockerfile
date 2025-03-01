@@ -1,9 +1,9 @@
 FROM 84codes/crystal:latest-alpine AS builder
-WORKDIR /tmp
+WORKDIR /usr/src/ecocirc
 COPY ecocirc.cr .
-RUN crystal build --release --static -Dwithout_openssl ecocirc.cr
+RUN crystal build --release --stats --static -Dwithout_openssl ecocirc.cr
 
 FROM scratch
-COPY --from=builder /tmp/ecocirc /
+COPY --from=builder /usr/src/ecocirc/ecocirc /
 EXPOSE 8080
 ENTRYPOINT ["/ecocirc"]
