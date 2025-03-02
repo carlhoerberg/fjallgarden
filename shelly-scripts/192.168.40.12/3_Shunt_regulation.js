@@ -67,8 +67,7 @@ function regulate() {
   newFraction = Math.max(0, Math.min(1, newFraction));
   
   const desiredShuntPos = Math.round(newFraction * 100);
-  print("Primary: ", T_p, "°C, Supply: ", T_supply, "°C, Return: ", T_r, "°C, Setpoint: ", T_setpoint, "°C, Shunt position: ", estimatedShuntPos, "%")
-  print("Desired shunt position: ", desiredShuntPos, "% (Ideal: ", (targetFraction * 100).toFixed(1), "%, Correction: ", (correction * 100).toFixed(1), "%)")
+  //print("Primary: ", T_p, "°C, Supply: ", T_supply, "°C, Return: ", T_r, "°C, Setpoint: ", T_setpoint, "°C")
   
   if (desiredShuntPos === 100 && estimatedShuntPos !== 100) {
     print("Opening shunt completely")
@@ -95,6 +94,7 @@ function regulate() {
   }
   // Decide the command direction based on whether we need to open or close.
   const command = diff > 0 ? "Cover.Open" : "Cover.Close";
+  print("Shunt position: ", estimatedShuntPos, "%, Desired shunt position: ", desiredShuntPos, "% (Ideal: ", (targetFraction * 100).toFixed(1), "%, Correction: ", (correction * 100).toFixed(1), "%)")
   print("Issuing command: " + command + " for " + movementTime + "s, to new shunt position: " + desiredShuntPos + "%");
   
   // Issue the open or close command.
