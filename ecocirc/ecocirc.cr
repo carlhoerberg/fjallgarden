@@ -100,6 +100,8 @@ class ModbusTCPClient
   end
 
   private def set_socket_options(socket)
+    socket.sync = false
+    socket.read_buffering = true
     socket.read_timeout = 1.seconds
     socket.write_timeout = 1.seconds
   end
@@ -179,7 +181,7 @@ end
 
 class Ecocirc
   def initialize(address = "192.168.40.20")
-    @modbus = ModbusRTUoverTCPClient.new(address)
+    @modbus = ModbusTCPClient.new(address)
   end
 
   def measurements
