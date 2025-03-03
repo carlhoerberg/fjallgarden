@@ -13,13 +13,13 @@ class ModbusTCPClient
     @socket.close
   end
 
-  def write_holding_registers(address, values : Indexable(Int16 | UInt16), unit_id = 1)
+  def write_holding_registers(address, values : Indexable(Int16 | UInt16), unit_id = 1) : Nil
     raise ArgumentError.new("Too many values") if values.size >= 128
     with_socket do |socket|
-      transaction_id = rand(UInt16) # Random transaction ID
-      protocol_id = 0_u16           # Modbus Protocol ID
-      length = 6_u16                # Number of bytes after this field
-      function_code = 16_u8         # Function code for reading holding registers
+      transaction_id = rand(UInt16)   # Random transaction ID
+      protocol_id = 0_u16             # Modbus Protocol ID
+      length = 7u16 + values.size * 2 # Number of bytes after this field
+      function_code = 16_u8           # Function code for writing holding registers
       count = values.size
       bytesize = count * 2
       socket.write_bytes transaction_id.to_u16, IO::ByteFormat::NetworkEndian
@@ -29,24 +29,31 @@ class ModbusTCPClient
       socket.write_byte function_code.to_u8
       socket.write_bytes address.to_u16, IO::ByteFormat::NetworkEndian
       socket.write_bytes count.to_u16, IO::ByteFormat::NetworkEndian
-      socket.write_bytes bytes.to_u8, IO::ByteFormat::NetworkEndian
+      socket.write_bytes bytesize.to_u8, IO::ByteFormat::NetworkEndian
       values.each do |v|
         socket.write_bytes v, IO::ByteFormat::NetworkEndian
       end
       socket.flush
+
+      validate_response!(socket, transaction_id, unit_id, function_code)
+      written_addr = socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian
+      written_count = socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian
+      raise Error.new "Unexpected written address #{written_addr} != #{address}" if written_addr != address
+      raise Error.new "Unexpected written count #{written_count} != #{count}" if written_count != count
     end
   end
+
+  ProtocolId = 0_u16 # Modbus TCP Protocol ID
 
   def read_holding_registers(address, count, unit_id = 1)
     with_socket do |socket|
       transaction_id = rand(UInt16) # Random transaction ID
-      protocol_id = 0_u16           # Modbus Protocol ID
       length = 6_u16                # Number of bytes after this field
       function_code = 3_u8          # Function code for reading holding registers
 
       # Construct Modbus TCP request
       socket.write_bytes transaction_id.to_u16, IO::ByteFormat::NetworkEndian
-      socket.write_bytes protocol_id.to_u16, IO::ByteFormat::NetworkEndian
+      socket.write_bytes ProtocolId.to_u16, IO::ByteFormat::NetworkEndian
       socket.write_bytes length.to_u16, IO::ByteFormat::NetworkEndian
       socket.write_byte unit_id.to_u8
       socket.write_byte function_code.to_u8
@@ -54,29 +61,8 @@ class ModbusTCPClient
       socket.write_bytes count.to_u16, IO::ByteFormat::NetworkEndian
       socket.flush
 
-      if transaction_id != (tid = socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
-        raise Error.new "Unexpected transaction id #{tid} != #{transaction_id}"
-      end
-      if protocol_id != (pi = socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
-        raise Error.new "Unexpected protocol #{pi} != #{protocol_id}"
-      end
-      response_length = socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian
-      if unit_id != (uid = socket.read_byte || raise IO::EOFError.new)
-        raise Error.new "Unexpected unit #{uid} != #{unit_id}"
-      end
-      response_function = socket.read_byte || raise IO::EOFError.new
-      if (response_function >> 7) == 1 # highest bit set indicates an exception
-        case exception_code = socket.read_byte
-        when 1 then raise Error.new "Invalid function"
-        when 2 then raise Error.new "Invalid address"
-        when 3 then raise Error.new "Invalid data"
-        else        raise Error.new "Exception code #{exception_code}"
-        end
-      end
+      validate_response!(socket, transaction_id, unit_id, function_code)
 
-      if response_function != function_code
-        raise Error.new "Unexpected function #{response_function} != #{function_code}"
-      end
       bytesize = socket.read_byte || raise IO::EOFError.new
       Array(UInt16).new(bytesize // sizeof(UInt16)) do
         socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian
@@ -104,6 +90,32 @@ class ModbusTCPClient
     socket.read_buffering = true
     socket.read_timeout = 1.seconds
     socket.write_timeout = 1.seconds
+  end
+
+  private def validate_response!(socket, transaction_id, unit_id, function_code)
+    if transaction_id != (tid = socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
+      raise Error.new "Unexpected transaction id #{tid} != #{transaction_id}"
+    end
+    if ProtocolId != (pi = socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian)
+      raise Error.new "Unexpected protocol #{pi} != #{ProtocolId}"
+    end
+    response_length = socket.read_bytes UInt16, IO::ByteFormat::NetworkEndian
+    if unit_id != (uid = socket.read_byte || raise IO::EOFError.new)
+      raise Error.new "Unexpected unit #{uid} != #{unit_id}"
+    end
+    response_function = socket.read_byte || raise IO::EOFError.new
+    if (response_function >> 7) == 1 # highest bit set indicates an exception
+      case exception_code = socket.read_byte
+      when 1 then raise Error.new "Invalid function"
+      when 2 then raise Error.new "Invalid address"
+      when 3 then raise Error.new "Invalid data"
+      else        raise Error.new "Exception code #{exception_code}"
+      end
+    end
+
+    if response_function != function_code
+      raise Error.new "Unexpected function #{response_function} != #{function_code}"
+    end
   end
 
   class Error < Exception; end
@@ -184,6 +196,20 @@ class Ecocirc
     @modbus = ModbusTCPClient.new(address)
   end
 
+  def status
+    values = @modbus.read_holding_registers(0x0000, 0x08)
+    {
+      operating:                      values[0] > 0,
+      control_mode:                   ControlMode.from_value?(values[1]),
+      night_mode:                     values[2] > 0,
+      air_venting_procedure:          values[3] > 0,
+      proportional_pressure_setpoint: values[4] / 100.0, # m
+      constant_pressure_setpoint:     values[5] / 100.0, # m
+      constant_curve_setpoint:        values[6],         # rpm
+      air_venting_power_on:           values[7] > 0,
+    }
+  end
+
   def measurements
     values = @modbus.read_holding_registers(0x0200, 0x10)
     {
@@ -207,13 +233,13 @@ class Ecocirc
   end
 
   def operating=(value : Bool)
-    @modbus.write_holding_registers(0x0000, [value ? 1 : 0])
+    @modbus.write_holding_registers(0x0000, [value ? 1u16 : 0u16])
   end
 
-  enum ControlMode
-    ConstantPressure    = 1
-    ProportionalPressue = 2
-    ConstantCurve       = 3
+  enum ControlMode : UInt16
+    ConstantPressure     = 1
+    ProportionalPressure = 2
+    ConstantCurve        = 3
   end
 
   def control_mode=(mode : ControlMode)
@@ -221,7 +247,7 @@ class Ecocirc
   end
 
   def night_mode=(value : Bool)
-    @modbus.write_holding_registers(0x0002, [value ? 1 : 0])
+    @modbus.write_holding_registers(0x0002, [value ? 1u16 : 0u16])
   end
 end
 
@@ -243,6 +269,25 @@ server = HTTP::Server.new([
   HTTP::CompressHandler.new,
 ]) do |context|
   case context.request.path
+  when "/ecocirc"
+    context.response.content_type = "text/plain"
+    ecocirc.status.each do |key, value|
+      context.response.print key, "\t", value, "\n"
+    end
+  when "/pump/on"
+    ecocirc.operating = true
+  when "/pump/off"
+    ecocirc.operating = false
+  when "/pump/nightmode/on"
+    ecocirc.night_mode = true
+  when "/pump/nightmode/off"
+    ecocirc.night_mode = false
+  when "/pump/mode/constantpressure"
+    ecocirc.control_mode = Ecocirc::ControlMode::ConstantPressure
+  when "/pump/mode/proportionalpressure"
+    ecocirc.control_mode = Ecocirc::ControlMode::ProportionalPressure
+  when "/pump/mode/constantcurve"
+    ecocirc.control_mode = Ecocirc::ControlMode::ConstantCurve
   when "/metrics"
     context.response.content_type = "text/plain"
     measurements = begin
