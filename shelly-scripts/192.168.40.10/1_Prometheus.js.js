@@ -14,9 +14,9 @@
 function httpServerHandler(request, response) {
   response.body = [
     "# HELP shelly_temperature gauge",
-    ["shelly_temperature{name=\"Tilluft\"}", Shelly.getComponentStatus("temperature:100").tC].join(" "),
-    ["shelly_temperature{name=\"Uteluft\"}", Shelly.getComponentStatus("temperature:101").tC].join(" "),
-    ["shelly_switch{name=\"Spjäll\"}", Shelly.getComponentStatus("switch:0").output ? 1 : 0].join(" ")
+    "shelly_temperature{name=\"Tilluft\"} " + Shelly.getComponentStatus("temperature:100").tC,
+    "shelly_temperature{name=\"Uteluft\"} " + Shelly.getComponentStatus("temperature:101").tC,
+    "shelly_switch{name=\"Spjäll\"} " + (Shelly.getComponentStatus("switch:0").output ? 1 : 0)
   ].join("\n")
   response.headers = [["Content-Type", "text/plain"]]
   response.send();

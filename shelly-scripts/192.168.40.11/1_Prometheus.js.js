@@ -14,10 +14,10 @@
 function httpServerHandler(request, response) {
   response.body = [
     "# HELP shelly_switch gauge",
-    ["shelly_switch{name=\"Fläkt\"}", Shelly.getComponentStatus("switch:0").output ? 1 : 0].join(" ")
+    "shelly_switch{name=\"Fläkt\"} " + (Shelly.getComponentStatus("switch:0").output ? 1 : 0)
   ].join("\n")
   response.headers = [["Content-Type", "text/plain"]]
-  response.send();
+  response.send()
 }
 
-HTTPServer.registerEndpoint("metrics", httpServerHandler);
+HTTPServer.registerEndpoint("metrics", httpServerHandler)

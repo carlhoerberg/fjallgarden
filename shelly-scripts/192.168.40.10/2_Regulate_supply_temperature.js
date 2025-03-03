@@ -8,8 +8,8 @@
 //  - The script reads the current outdoor temperature (placeholder function).
 //  - Applies a heating curve formula to compute the supply temperature.
 //  - Clamps the resulting temperature to a min/max range to avoid extremes.
-//  - Sends the new setpoint to the heating system (placeholder command).
-//  - Runs periodically on a timer.
+//  - Sends the new setpoint to the heating system.
+//  - Runs whenever outdoor temperature changes.
 //
 // Adjust the constants, placeholder code, and the regulation interval for your setup.
 
@@ -20,15 +20,11 @@ const OUT_REF        = 5.0;      // Outdoor reference temperature (°C)
 const MIN_SUPPLY     = 20.0;     // Minimum allowed supply temperature (°C)
 const MAX_SUPPLY     = 60.0;     // Maximum allowed supply temperature (°C)
 
-const REGULATION_INTERVAL = 30000; // Interval in ms (e.g., 30 seconds) to run the regulation loop
-
 function getOutdoorTemperature() {
   return Shelly.getComponentStatus("temperature:101").tC;
 }
 
 function updateSupplyTemperature(T_supply) {
-  return;
-  
   let targetIP = "192.168.40.12";  
   // Construct the URL for updating the virtual component.
   // The endpoint, query parameters, and method depend on how your target device is configured.
@@ -44,9 +40,9 @@ function updateSupplyTemperature(T_supply) {
 }
 
 // --- Regulation Function ---
-function regulateSupplyTemperature() {
-  let T_outdoor = getOutdoorTemperature();
-  
+function regulateSupplyTemperature(T_outdoor) {
+  print("Outdoor Temperature: " + T_outdoor + "°C")
+
   // Example of a simple linear heating curve:
   //   T_supply = OFFSET + SLOPE * (OUT_REF - T_outdoor)
   // Adjust or replace with a more advanced “curve” as needed.
@@ -55,14 +51,17 @@ function regulateSupplyTemperature() {
   // Clamp to min/max values
   T_supply = Math.max(MIN_SUPPLY, Math.min(MAX_SUPPLY, T_supply));
   
-  print("Outdoor Temperature: " + T_outdoor + "°C");
-  print("Calculated Supply Temperature: " + T_supply.toFixed(1) + "°C");
-  
   // Update the virtual component on the other Shelly device with the new supply temperature.
   updateSupplyTemperature(T_supply);
 }
 
-regulateSupplyTemperature()
-// --- Timer ---
-// Execute the regulation loop periodically at the chosen interval.
-Timer.set(REGULATION_INTERVAL, true, regulateSupplyTemperature);
+// Called on each Shelly event (avoid anonymous methods in shelly script)
+function onEvent(event) {
+  if (event.component === "temperature:101") {
+    const T_outdoor = event.info.tC
+    regulateSupplyTemperature(T_outdoor)
+  }
+}
+
+regulateSupplyTemperature(getOutdoorTemperature())
+Shelly.addEventHandler(onEvent)
