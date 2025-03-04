@@ -179,6 +179,18 @@ class Ecocirc
   def night_mode=(value : Bool)
     @modbus.write_holding_registers(0x0002, [value ? 1u16 : 0u16])
   end
+
+  def proportional_pressure_setpoint=(value)
+    @modbus.write_holding_registers(0x0004, [value.to_u16])
+  end
+
+  def constant_pressure_setpoint=(value)
+    @modbus.write_holding_registers(0x0005, [value.to_u16])
+  end
+
+  def constant_curve_setpoint=(value)
+    @modbus.write_holding_registers(0x0006, [value.to_u16])
+  end
 end
 
 require "http/server"
@@ -212,12 +224,16 @@ server = HTTP::Server.new([
     ecocirc.night_mode = true
   when "/pump/nightmode/off"
     ecocirc.night_mode = false
-  when "/pump/mode/constantpressure"
+  when "/pump/mode/constant_pressure"
     ecocirc.control_mode = Ecocirc::ControlMode::ConstantPressure
-  when "/pump/mode/proportionalpressure"
+  when "/pump/mode/proportional_pressure"
     ecocirc.control_mode = Ecocirc::ControlMode::ProportionalPressure
-  when "/pump/mode/constantcurve"
+  when "/pump/mode/constant_curve"
     ecocirc.control_mode = Ecocirc::ControlMode::ConstantCurve
+  when "/pump/constant_pressure_setpoint"
+    ecocirc.constant_pressure_setpoint = context.request.query_params["setpoint"].to_u16 * 100
+  when "/pump/proportional_pressure_setpoint"
+    ecocirc.proportional_pressure_setpoint = context.request.query_params["setpoint"].to_u16 * 100
   when "/metrics"
     context.response.content_type = "text/plain"
     measurements = begin
