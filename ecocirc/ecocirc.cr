@@ -231,9 +231,9 @@ server = HTTP::Server.new([
   when "/pump/mode/constant_curve"
     ecocirc.control_mode = Ecocirc::ControlMode::ConstantCurve
   when "/pump/constant_pressure_setpoint"
-    ecocirc.constant_pressure_setpoint = context.request.query_params["setpoint"].to_u16 * 100
+    ecocirc.constant_pressure_setpoint = context.request.query_params["setpoint"].to_f * 100
   when "/pump/proportional_pressure_setpoint"
-    ecocirc.proportional_pressure_setpoint = context.request.query_params["setpoint"].to_u16 * 100
+    ecocirc.proportional_pressure_setpoint = context.request.query_params["setpoint"].to_f * 100
   when "/metrics"
     context.response.content_type = "text/plain"
     measurements = begin
