@@ -180,8 +180,6 @@ const co2 = Virtual.getHandle("number:201")
 const humidity = Virtual.getHandle("number:202")
 
 function httpServerHandler(request, response) {
-  const em = Shelly.getComponentStatus("em:0")
-  const emdata = Shelly.getComponentStatus("emdata:0")
   response.body = [
     "# HELP aranet_temperature gauge",
     "aranet_temperature{name=\"Förskolan\"} " + temperature.getValue(),
