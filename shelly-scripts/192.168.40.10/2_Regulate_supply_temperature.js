@@ -15,7 +15,7 @@
 
 // --- Constants and Configuration ---
 const HEATING_SLOPE  = 1.1;      // Slope of the heating curve
-const OFFSET         = 38.0;     // Base offset (°C)
+const OFFSET         = 40.0;     // Base offset (°C)
 const OUT_REF        = 5.0;      // Outdoor reference temperature (°C)
 const MIN_SUPPLY     = 20.0;     // Minimum allowed supply temperature (°C)
 const MAX_SUPPLY     = 60.0;     // Maximum allowed supply temperature (°C)
