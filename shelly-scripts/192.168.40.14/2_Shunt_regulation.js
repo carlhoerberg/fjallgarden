@@ -13,16 +13,12 @@
 //
 // Constants
 const Kp = 0.1;                // proportional gain (tune as needed)
-const FULL_MOVEMENT_TIME = 46; // time in s to move from fully closed (0%) to fully open (100%)
-
-// Global variables to track the estimated shunt position (0-100%) and movement state.
-// Assume initial position is fully open (100%).
-let estimatedShuntPos = 100;
 
 // desired supply temperature (°C)
 function getSetpointTemperature() {
   return Shelly.getComponentStatus("number:200").value
 }
+
 function getPrimaryTemperature() {
   return Shelly.getComponentStatus("temperature:101").tC;
 }
@@ -33,6 +29,11 @@ function getSupplyTemperature() {
 
 function getReturnTemperature() {
   return Shelly.getComponentStatus("temperature:100").tC
+}
+
+function isMoving() {
+  const coverState = Shelly.getComponentStatus("cover:0").state;
+  return coverState === "opening" || coverState === "closing"
 }
 
 // --- Regulation function ---
@@ -69,64 +70,23 @@ function regulate() {
   const desiredShuntPos = Math.round(newFraction * 100);
   //print("Primary: ", T_p, "°C, Supply: ", T_supply, "°C, Return: ", T_r, "°C, Setpoint: ", T_setpoint, "°C")
   
-  if (desiredShuntPos === 100 && estimatedShuntPos !== 100) {
-    print("Opening shunt completely")
-    Shelly.call("Cover.Open", { id: 0 }, function(res, error_code, error_message) {
-      if (error_code !== 0) {
-        print("Error issuing Cover.Open: " + error_message);
-      } else {
-        estimatedShuntPos = desiredShuntPos;
-      }
-    });
-    return
-  }
-  
+  const shuntPos = Shelly.getComponentStatus("cover:0").current_pos
   // Determine if movement is needed by comparing the desired shunt position with our estimated one.
-  const diff = desiredShuntPos - estimatedShuntPos;
+  const diff = desiredShuntPos - shuntPos;
 
-  // Calculate the movement time based on the difference.
-  const movementFraction = Math.abs(diff) / 100;
-  const movementTime = movementFraction * FULL_MOVEMENT_TIME; // in s
-  
-  if (movementTime < 5) {
+  if (diff < 5) {
     // print("Shunt position within threshold. No movement required.");
     return;
   }
-  // Decide the command direction based on whether we need to open or close.
-  const command = diff > 0 ? "Cover.Open" : "Cover.Close";
-  print("Shunt position: ", estimatedShuntPos, "%, Desired shunt position: ", desiredShuntPos, "% (Ideal: ", (targetFraction * 100).toFixed(1), "%, Correction: ", (correction * 100).toFixed(1), "%)")
-  print("Issuing command: " + command + " for " + movementTime + "s, to new shunt position: " + desiredShuntPos + "%");
+
+  print("Shunt position: ", shuntPos, "%, Desired shunt position: ", desiredShuntPos, "% (Ideal: ", (targetFraction * 100).toFixed(1), "%, Correction: ", (correction * 100).toFixed(1), "%)")
+  print("Issuing command: Cover.GoToPosition to new shunt position: " + desiredShuntPos + "%");
   
-  // Issue the open or close command.
-  Shelly.call(command, { id: 0, duration: movementTime }, function(res, error_code, error_message) {
+  Shelly.call("Cover.GoToPosition", { id: 0, pos: desiredShuntPos }, function(res, error_code, error_message) {
     if (error_code !== 0) {
       print("Error issuing " + command + ": " + error_message);
-    } else {
-      // Update our estimated shunt position to the desired value.
-      estimatedShuntPos = desiredShuntPos;
     }
   });
 }
 
-function isMoving() {
-  const coverState = Shelly.getComponentStatus("cover:0").state;
-  if (coverState === "opening" || coverState === "closing") {
-    return true;
-  }
-}
-
-function resetShuntPosition() {
-  const coverState = Shelly.getComponentStatus("cover:0").state
-  if (coverState === "open") {
-    estimatedShuntPos = 100
-  } else if (coverState === "closed") {
-    estimatedShuntPos = 0
-  } else {
-    Shelly.call("Cover.Open", { id: 0 })
-    print("Reseting shunt position to fully open")
-    estimatedShuntPos = 100
-  }
-}
-
-resetShuntPosition()
 Timer.set(10000, true, regulate);
