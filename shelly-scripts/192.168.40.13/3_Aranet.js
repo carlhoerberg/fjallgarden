@@ -144,6 +144,7 @@ function scanCB(ev, res) {
   temperature.setValue(measurement.tC)
   co2.setValue(measurement.co2_ppm)
   humidity.setValue(measurement.rh)
+  battery.setValue(measurement.battery)
 }
 
 function init() {
@@ -178,6 +179,7 @@ function init() {
 const temperature = Virtual.getHandle("number:200")
 const co2 = Virtual.getHandle("number:201")
 const humidity = Virtual.getHandle("number:202")
+const battery = Virtual.getHandle("number:203")
 
 function httpServerHandler(request, response) {
   response.body = [
@@ -186,7 +188,9 @@ function httpServerHandler(request, response) {
     "# HELP aranet_co2 gauge",
     "aranet_co2{name=\"Förskolan\"} " + co2.getValue(),
     "# HELP aranet_humidity gauge",
-    "aranet_humidity{name=\"Förskolan\"} " + humidity.getValue()
+    "aranet_humidity{name=\"Förskolan\"} " + humidity.getValue(),
+    "# HELP aranet_battery gauge",
+    "aranet_battery{name=\"Förskolan\"} " + battery.getValue()
   ].join("\n")
   response.headers = [["Content-Type", "text/plain"]]
   response.send();
