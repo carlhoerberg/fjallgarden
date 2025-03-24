@@ -15,16 +15,23 @@
 const Kp = 0.1;                // proportional gain (tune as needed)
 
 // desired supply temperature (°C)
-function getSetpointTemperature() {
-  return Shelly.getComponentStatus("number:200").value
+const SupplyTemperature = Virtual.getHandle("number:200")
+const TemperatureOffset = Virtual.getHandle("number:201")
+
+function getIndoorTemperature() {
+  return Shelly.getComponentStatus("bthomesensor:205").value;
+}
+
+function getOutdoorTemperature() {
+  return Shelly.getComponentStatus("bthomesensor:202").value;
 }
 
 function getPrimaryTemperature() {
-  return Shelly.getComponentStatus("temperature:101").tC;
+  return Shelly.getComponentStatus("temperature:102").tC;
 }
 
 function getSupplyTemperature() {
-  return Shelly.getComponentStatus("temperature:102").tC
+  return Shelly.getComponentStatus("temperature:101").tC
 }
 
 function getReturnTemperature() {
@@ -42,7 +49,7 @@ function regulate() {
     print("Shunt is currently moving. Skipping regulation cycle.");
     return;
   }
-  const T_setpoint = getSetpointTemperature();
+  const T_setpoint = SupplyTemperature.getValue();
   const T_p = getPrimaryTemperature();
   const T_supply = getSupplyTemperature();
   const T_r = getReturnTemperature();
@@ -68,18 +75,19 @@ function regulate() {
   newFraction = Math.max(0, Math.min(1, newFraction));
   
   const desiredShuntPos = Math.round(newFraction * 100);
-  //print("Primary: ", T_p, "°C, Supply: ", T_supply, "°C, Return: ", T_r, "°C, Setpoint: ", T_setpoint, "°C")
+  print("Primary: ", T_p, "°C, Supply: ", T_supply, "°C, Return: ", T_r, "°C, Setpoint: ", T_setpoint, "°C")
   
   const shuntPos = Shelly.getComponentStatus("cover:0").current_pos
-  // Determine if movement is needed by comparing the desired shunt position with our estimated one.
-  const diff = desiredShuntPos - shuntPos;
 
-  if (diff < 5) {
+  print("Shunt position: ", shuntPos, "%, Desired shunt position: ", desiredShuntPos, "% (Ideal: ", (targetFraction * 100).toFixed(1), "%, Correction: ", (correction * 100).toFixed(1), "%)")
+
+  // Determine if movement is needed by comparing the desired shunt position with our estimated one.
+  const diff = Math.abs(desiredShuntPos - shuntPos)
+  if (diff < 1) {
     // print("Shunt position within threshold. No movement required.");
     return;
   }
 
-  print("Shunt position: ", shuntPos, "%, Desired shunt position: ", desiredShuntPos, "% (Ideal: ", (targetFraction * 100).toFixed(1), "%, Correction: ", (correction * 100).toFixed(1), "%)")
   print("Issuing command: Cover.GoToPosition to new shunt position: " + desiredShuntPos + "%");
   
   Shelly.call("Cover.GoToPosition", { id: 0, pos: desiredShuntPos }, function(res, error_code, error_message) {
@@ -89,4 +97,36 @@ function regulate() {
   });
 }
 
+const HEATING_SLOPE  = 1.1;      // Slope of the heating curve
+const BASE_OFFSET    = 29.0;     // Base offset (°C)
+const OUT_REF        = 5.0;      // Outdoor reference temperature (°C)
+const MIN_SUPPLY     = 10.0;     // Minimum allowed supply temperature (°C)
+const MAX_SUPPLY     = 55.0;     // Maximum allowed supply temperature (°C)
+
+function regulateSupplyTemperature(T_outdoor) {
+  // Simple linear heating curve:
+  let T_supply = TemperatureOffset.getValue() + BASE_OFFSET + HEATING_SLOPE * (OUT_REF - T_outdoor);
+  
+  // Clamp to min/max values
+  T_supply = Math.max(MIN_SUPPLY, Math.min(MAX_SUPPLY, T_supply));
+
+  print("Outdoor Temperature:", T_outdoor, "°C, ", "Calculated Supply Temperature:", T_supply.toFixed(1), "°C");
+  SupplyTemperature.setValue(T_supply)
+}
+
+function regulateSupplyTemperatureOnOutdoorTempChange(event) {
+  if (event.component === "bthomesensor:202") {
+    if (event.delta.value) {
+      regulateSupplyTemperature(event.delta.value)
+    }
+  }
+}
+
+// Regulate setpoint on outdoor temperature change
+Shelly.addStatusHandler(regulateSupplyTemperatureOnOutdoorTempChange)
+
+// Set setpoint once by getting outdoor temperature
+regulateSupplyTemperature(getOutdoorTemperature())
+
+// Adjust shunt position every 10s
 Timer.set(10000, true, regulate);
