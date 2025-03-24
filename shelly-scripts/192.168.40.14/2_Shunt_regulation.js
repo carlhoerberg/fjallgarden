@@ -102,31 +102,51 @@ const BASE_OFFSET    = 29.0;     // Base offset (°C)
 const OUT_REF        = 5.0;      // Outdoor reference temperature (°C)
 const MIN_SUPPLY     = 10.0;     // Minimum allowed supply temperature (°C)
 const MAX_SUPPLY     = 55.0;     // Maximum allowed supply temperature (°C)
+const TARGET_INDOOR_TEMP = 21.0; // Target indoor temperature (°C)
+const INDOOR_INFLUENCE = 1.5;    // How much indoor temperature affects the curve (°C/°C)
 
-function regulateSupplyTemperature(T_outdoor) {
-  // Simple linear heating curve:
-  let T_supply = TemperatureOffset.getValue() + BASE_OFFSET + HEATING_SLOPE * (OUT_REF - T_outdoor);
+function regulateSupplyTemperature(T_outdoor, T_indoor) {
+  // Get indoor temperature if not provided
+  if (T_indoor === undefined) {
+    T_indoor = getIndoorTemperature();
+  }
+  
+  // Calculate indoor temperature error (negative when too warm)
+  const indoor_error = TARGET_INDOOR_TEMP - T_indoor;
+  
+  // Simple linear heating curve with indoor feedback:
+  let T_supply = TemperatureOffset.getValue() + 
+                 BASE_OFFSET + 
+                 HEATING_SLOPE * (OUT_REF - T_outdoor) + 
+                 INDOOR_INFLUENCE * indoor_error;
   
   // Clamp to min/max values
   T_supply = Math.max(MIN_SUPPLY, Math.min(MAX_SUPPLY, T_supply));
 
-  print("Outdoor Temperature:", T_outdoor, "°C, ", "Calculated Supply Temperature:", T_supply.toFixed(1), "°C");
+  print("Outdoor:", T_outdoor.toFixed(1), "°C, Indoor:", T_indoor.toFixed(1), 
+        "°C, Indoor error:", indoor_error.toFixed(1), "°C, Supply:", T_supply.toFixed(1), "°C");
   SupplyTemperature.setValue(T_supply)
 }
 
-function regulateSupplyTemperatureOnOutdoorTempChange(event) {
+function regulateSupplyTemperatureOnSensorChange(event) {
   if (event.component === "bthomesensor:202") {
-    if (event.delta.value) {
-      regulateSupplyTemperature(event.delta.value)
+    // Outdoor temperature changed
+    if (event.delta.value !== undefined) {
+      regulateSupplyTemperature(event.delta.value);
+    }
+  } else if (event.component === "bthomesensor:205") {
+    // Indoor temperature changed
+    if (event.delta.value !== undefined) {
+      regulateSupplyTemperature(getOutdoorTemperature(), event.delta.value);
     }
   }
 }
 
-// Regulate setpoint on outdoor temperature change
-Shelly.addStatusHandler(regulateSupplyTemperatureOnOutdoorTempChange)
+// Regulate setpoint on temperature sensor changes
+Shelly.addStatusHandler(regulateSupplyTemperatureOnSensorChange)
 
-// Set setpoint once by getting outdoor temperature
-regulateSupplyTemperature(getOutdoorTemperature())
+// Set setpoint once using current temperature readings
+regulateSupplyTemperature(getOutdoorTemperature(), getIndoorTemperature())
 
 // Adjust shunt position every 10s
 Timer.set(10000, true, regulate);
