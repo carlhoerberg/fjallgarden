@@ -102,7 +102,7 @@ const BASE_OFFSET    = 29.0;     // Base offset (°C)
 const OUT_REF        = 5.0;      // Outdoor reference temperature (°C)
 const MIN_SUPPLY     = 10.0;     // Minimum allowed supply temperature (°C)
 const MAX_SUPPLY     = 55.0;     // Maximum allowed supply temperature (°C)
-const TARGET_INDOOR_TEMP = 21.0; // Target indoor temperature (°C)
+const TARGET_INDOOR_TEMP = 19.5; // Target indoor temperature (°C)
 const INDOOR_INFLUENCE = 1.5;    // How much indoor temperature affects the curve (°C/°C)
 
 function regulateSupplyTemperature(T_outdoor, T_indoor) {
