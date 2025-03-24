@@ -83,7 +83,7 @@ function regulate() {
 
   // Determine if movement is needed by comparing the desired shunt position with our estimated one.
   const diff = Math.abs(desiredShuntPos - shuntPos)
-  if (diff < 1) {
+  if (diff <= 2) {
     // print("Shunt position within threshold. No movement required.");
     return;
   }
