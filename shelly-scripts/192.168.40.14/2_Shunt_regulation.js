@@ -103,27 +103,23 @@ const OUT_REF        = 5.0;      // Outdoor reference temperature (°C)
 const MIN_SUPPLY     = 10.0;     // Minimum allowed supply temperature (°C)
 const MAX_SUPPLY     = 55.0;     // Maximum allowed supply temperature (°C)
 const TARGET_INDOOR_TEMP = 19.5; // Target indoor temperature (°C)
-const INDOOR_INFLUENCE = 1.5;    // How much indoor temperature affects the curve (°C/°C)
+const INDOOR_INFLUENCE = 1.1;    // How much indoor temperature affects the curve (°C/°C)
 
 function regulateSupplyTemperature(T_outdoor, T_indoor) {
-  // Get indoor temperature if not provided
-  if (T_indoor === undefined) {
-    T_indoor = getIndoorTemperature();
-  }
-  
-  // Calculate indoor temperature error (negative when too warm)
+  // Calculate outdoor/indoor temperature error (negative when too warm)
+  const outdoor_error = OUT_REF - T_outdoor
   const indoor_error = TARGET_INDOOR_TEMP - T_indoor;
   
   // Simple linear heating curve with indoor feedback:
-  let T_supply = TemperatureOffset.getValue() + 
-                 BASE_OFFSET + 
-                 HEATING_SLOPE * (OUT_REF - T_outdoor) + 
+  let T_supply = TemperatureOffset.getValue() +
+                 BASE_OFFSET +
+                 HEATING_SLOPE * outdoor_error +
                  INDOOR_INFLUENCE * indoor_error;
   
   // Clamp to min/max values
   T_supply = Math.max(MIN_SUPPLY, Math.min(MAX_SUPPLY, T_supply));
 
-  print("Outdoor:", T_outdoor.toFixed(1), "°C, Indoor:", T_indoor.toFixed(1), 
+  print("Outdoor:", T_outdoor.toFixed(1), "°C, Outdoor error:", outdoor_error.toFixed(1), "°C, Indoor:", T_indoor.toFixed(1),
         "°C, Indoor error:", indoor_error.toFixed(1), "°C, Supply:", T_supply.toFixed(1), "°C");
   SupplyTemperature.setValue(T_supply)
 }
@@ -132,7 +128,7 @@ function regulateSupplyTemperatureOnSensorChange(event) {
   if (event.component === "bthomesensor:202") {
     // Outdoor temperature changed
     if (event.delta.value !== undefined) {
-      regulateSupplyTemperature(event.delta.value);
+      regulateSupplyTemperature(event.delta.value, getIndoorTemperature());
     }
   } else if (event.component === "bthomesensor:205") {
     // Indoor temperature changed
