@@ -18,6 +18,7 @@ function httpServerHandler(request, response) {
     "shelly_temperature{name=\"Radiatorkrets retur\"} " + Shelly.getComponentStatus("temperature:100").tC,
     "shelly_temperature{name=\"Radiatorkrets framledning\"} " + Shelly.getComponentStatus("temperature:101").tC,
     "shelly_temperature{name=\"Radiatorkrets primär\"} " + Shelly.getComponentStatus("temperature:102").tC,
+    "shelly_temperature{name=\"Radiatorkrets setpoint\"} " + Shelly.getComponentStatus("number:200").value,
     "shelly_temperature{name=\"Matsal\"} " + (Shelly.getComponentStatus("bthomesensor:205").value || NaN),
     "shelly_cover_position{name=\"Radiatorkrets shuntposition\"} " + Shelly.getComponentStatus("cover:0").current_pos
   ].join("\n")
