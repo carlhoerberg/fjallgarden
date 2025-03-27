@@ -91,10 +91,10 @@ function regulate() {
   }
   
   // Determine if movement is needed by comparing the desired shunt position with our estimated one.
-  const diff = Math.abs(ShuntPosition.getValue() - desiredShuntPos)
+  const diff = desiredShuntPos - ShuntPosition.getValue()
 
   // Calculate the movement time based on the difference.
-  const movementFraction = diff / 100;
+  const movementFraction = Math.abs(diff) / 100;
   const movementTime = movementFraction * FULL_MOVEMENT_TIME; // in s
   
   if (movementTime < 5) {
