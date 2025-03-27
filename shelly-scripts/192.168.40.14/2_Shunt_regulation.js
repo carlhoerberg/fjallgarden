@@ -15,7 +15,7 @@
 const Kp = 0.1;                // proportional gain (tune as needed)
 
 // desired supply temperature (°C)
-const SupplyTemperature = Virtual.getHandle("number:200")
+const SetpointTemperature = Virtual.getHandle("number:200")
 const TemperatureOffset = Virtual.getHandle("number:201")
 
 function getIndoorTemperature() {
@@ -49,7 +49,7 @@ function regulate() {
     print("Shunt is currently moving. Skipping regulation cycle.");
     return;
   }
-  const T_setpoint = SupplyTemperature.getValue();
+  const T_setpoint = SetpointTemperature.getValue();
   const T_p = getPrimaryTemperature();
   const T_supply = getSupplyTemperature();
   const T_r = getReturnTemperature();
@@ -103,7 +103,7 @@ const OUT_REF        = 5.0;      // Outdoor reference temperature (°C)
 const MIN_SUPPLY     = 10.0;     // Minimum allowed supply temperature (°C)
 const MAX_SUPPLY     = 55.0;     // Maximum allowed supply temperature (°C)
 const TARGET_INDOOR_TEMP = 19.5; // Target indoor temperature (°C)
-const INDOOR_INFLUENCE = 1.1;    // How much indoor temperature affects the curve (°C/°C)
+const INDOOR_INFLUENCE = 1.5;    // How much indoor temperature affects the curve (°C/°C)
 
 function regulateSupplyTemperature(T_outdoor, T_indoor) {
   // Calculate outdoor/indoor temperature error (negative when too warm)
@@ -121,7 +121,7 @@ function regulateSupplyTemperature(T_outdoor, T_indoor) {
 
   print("Outdoor:", T_outdoor.toFixed(1), "°C, Outdoor error:", outdoor_error.toFixed(1), "°C, Indoor:", T_indoor.toFixed(1),
         "°C, Indoor error:", indoor_error.toFixed(1), "°C, Supply:", T_supply.toFixed(1), "°C");
-  SupplyTemperature.setValue(T_supply)
+  SetpointTemperature.setValue(T_supply)
 }
 
 function regulateSupplyTemperatureOnSensorChange(event) {
