@@ -25,11 +25,13 @@ function httpServerHandler(request, response) {
   response.body = [
     "# HELP shelly_temperature gauge",
     "# HELP shelly_cover gauge",
-    "shelly_temperature{name=\"Retur\"} " + Shelly.getComponentStatus("temperature:100").tC,
-    "shelly_temperature{name=\"Primär\"} " + Shelly.getComponentStatus("temperature:101").tC,
-    "shelly_temperature{name=\"Framledning\"} " + Shelly.getComponentStatus("temperature:102").tC,
+    "shelly_temperature{name=\"TA02 primär\"} " + Shelly.getComponentStatus("temperature:101").tC,
+    "shelly_temperature{name=\"TA02 framledning\"} " + Shelly.getComponentStatus("temperature:102").tC,
+    "shelly_temperature{name=\"TA02 retur\"} " + Shelly.getComponentStatus("temperature:100").tC,
+    "shelly_temperature{name=\"TA02 setpoint\"} " + Shelly.getComponentStatus("number:200").value,
     //"shelly_temperature{name=\"Utomhus\"} " + (Shelly.getComponentStatus("bthomesensor:202").value || NaN),
-    "shelly_cover{name=\"Ställdon\"} " + cover
+    "shelly_cover{name=\"TA02 ställdon\"} " + cover,
+    "shelly_cover_position{name=\"TA02 shuntposition\"} " + Shelly.getComponentStatus("number:201").value
   ].join("\n")
   response.headers = [["Content-Type", "text/plain"]]
   response.send();
